@@ -22,6 +22,7 @@ try {
         "status"        INTEGER NOT NULL,
         "server"        TEXT,
         "dt"            TEXT NOT NULL,
+        "dtStart"       TEXT NOT NULL,
         "dtUpload"      TEXT,
         PRIMARY KEY("rowIdentity" AUTOINCREMENT)
     );' | Out-Null
@@ -31,6 +32,9 @@ try {
     exit 1
 }
 
+#Start of this whole loop
+$global:dtStart = Get-Date
+
 $districtLEA = Get-Content "$($env:userprofile)\.config\Cognos\DefaultConfig.json" | 
     ConvertFrom-Json | 
     Select-Object -ExpandProperty Username | 
@@ -38,7 +42,6 @@ $districtLEA = Get-Content "$($env:userprofile)\.config\Cognos\DefaultConfig.jso
     Select-Object -ExpandProperty Matches | 
     Select-Object -ExpandProperty Groups | 
     Select-Object -Skip 1 -ExpandProperty Value
-
 
 #Hashtables to build results.
 function New-StatusObject {
@@ -49,6 +52,7 @@ function New-StatusObject {
         status = 0 #boolean false
         server = $null
         dt = (Get-Date)
+        dtStart = $dtStart
         dtUpload = $null
     }
 }

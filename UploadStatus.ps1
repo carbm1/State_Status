@@ -28,7 +28,11 @@ function Get-JsonArray ($rows) {
 }
 
 #limited to a maximum of 50 submissions at once.
-while ($rows = Invoke-SqlQuery -Query "SELECT * FROM state_status WHERE dtUpload IS NULL ORDER BY dt LIMIT 50") {
-    $response = Invoke-RestMethod -Uri "https://www.camtechcs.com/statestatus/api" -Method Post -Body (Get-JsonArray $rows)
-    Invoke-SqlUpdate -Query "UPDATE state_status SET dtUpload = '$(Get-Date)' WHERE rowIdentity IN ($($response.rowIdentities -join ','))"
+try {
+    while ($rows = Invoke-SqlQuery -Query "SELECT * FROM state_status WHERE dtUpload IS NULL ORDER BY dt LIMIT 50") {
+        $response = Invoke-RestMethod -Uri "https://www.camtechcs.com/statestatus/api" -Method Post -Body (Get-JsonArray $rows)
+        Invoke-SqlUpdate -Query "UPDATE state_status SET dtUpload = '$(Get-Date)' WHERE rowIdentity IN ($($response.rowIdentities -join ','))"
+    }
+} catch {
+    Write-Error "Failed to upload state stutus data."
 }
