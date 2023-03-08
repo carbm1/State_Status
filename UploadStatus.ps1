@@ -19,7 +19,7 @@ function Get-JsonArray ($rows) {
 
     $responseArray = [System.Collections.Generic.List[Object]]::new()
     $columnNames = $rows | Get-Member | Where-Object -Property MemberType -EQ 'Property' | Select-Object -ExpandProperty Name
-    $rows | Select-Object -ExcludeProperty dtUpload -Property $cols | ForEach-Object {
+    $rows | Select-Object -ExcludeProperty dtUpload -Property $columnNames | ForEach-Object {
         $responseArray.Add($PSitem)
     }
 
@@ -28,7 +28,7 @@ function Get-JsonArray ($rows) {
 }
 
 #limited to a maximum of 50 submissions at once.
-while ($rows = Invoke-SqlQuery -Query "SELECT * FROM state_status WHERE dtUpload IS NULL ORDER BY dt LIMIT 5") {
+while ($rows = Invoke-SqlQuery -Query "SELECT * FROM state_status WHERE dtUpload IS NULL ORDER BY dt LIMIT 50") {
     $response = Invoke-RestMethod -Uri "https://www.camtechcs.com/statestatus/api" -Method Post -Body (Get-JsonArray $rows)
     Invoke-SqlUpdate -Query "UPDATE state_status SET dtUpload = '$(Get-Date)' WHERE rowIdentity IN ($($response.rowIdentities -join ','))"
 }
