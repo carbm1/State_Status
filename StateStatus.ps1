@@ -11,21 +11,42 @@
 
 #>
 
+$version = '23.3.9'
+
 try {
     Open-SQLiteConnection -DataSource "$PSScriptRoot\statestatus.sqlite3" -ErrorAction Stop
 
-    Invoke-SqlUpdate -Query 'CREATE TABLE IF NOT EXISTS "state_status" (
-        "rowIdentity"   INTEGER,
-        "district"      TEXT NOT NULL,
-        "service"	    TEXT NOT NULL,
-        "method"        TEXT NOT NULL,
-        "status"        INTEGER NOT NULL,
-        "server"        TEXT,
-        "dt"            TEXT NOT NULL,
-        "dtStart"       TEXT NOT NULL,
-        "dtUpload"      TEXT,
-        PRIMARY KEY("rowIdentity" AUTOINCREMENT)
-    );' | Out-Null
+    # I want to keep this as simple as possible. If the version number changes then drop the state_status table.
+    try {
+        $dbVersion = Invoke-SqlScalar -Query "SELECT version FROM version"
+    } catch {
+        Invoke-SqlUpdate -Query 'CREATE TABLE IF NOT EXISTS "version" (
+            "version"  TEXT
+        );' | Out-Null
+        
+        Invoke-SqlUpdate -Query "INSERT INTO version (version) VALUES ('$($version)')" | Out-Null
+
+        Invoke-SqlUpdate -Query 'DROP TABLE IF EXISTS "state_status";' | Out-Null
+    } finally {
+    
+        if ([version]$dbVersion -lt [version]$version) {
+            Invoke-SqlUpdate -Query "UPDATE version SET version = '$($version)'" | Out-Null
+            Invoke-SqlUpdate -Query 'DROP TABLE IF EXISTS "state_status";' | Out-Null
+        }
+
+        Invoke-SqlUpdate -Query 'CREATE TABLE IF NOT EXISTS "state_status" (
+            "rowIdentity"   INTEGER,
+            "district"      TEXT NOT NULL,
+            "service"	    TEXT NOT NULL,
+            "method"        TEXT NOT NULL,
+            "status"        INTEGER NOT NULL,
+            "server"        TEXT,
+            "dt"            TEXT NOT NULL,
+            "dtStart"       TEXT NOT NULL,
+            "dtUpload"      TEXT,
+            PRIMARY KEY("rowIdentity" AUTOINCREMENT)
+        );' | Out-Null
+    }
 
 } catch {
     Write-Error "Failed to open SQLite Database."
@@ -34,6 +55,10 @@ try {
 
 #Start of this whole loop
 $global:dtStart = Get-Date
+
+if (Test-Path "$PSScriptRoot\settings.ps1") {
+    . $PSScriptRoot\settings.ps1
+}
 
 $districtLEA = Get-Content "$($env:userprofile)\.config\Cognos\DefaultConfig.json" | 
     ConvertFrom-Json | 
@@ -44,11 +69,11 @@ $districtLEA = Get-Content "$($env:userprofile)\.config\Cognos\DefaultConfig.jso
     Select-Object -Skip 1 -ExpandProperty Value
 
 #Hashtables to build results.
-function New-StatusObject {
+function New-StatusObject ($service, $method) {
     return [ordered]@{
         district = $districtLEA
-        service = $null
-        method = $null
+        service = $service
+        method = $method
         status = 0 #boolean false
         server = $null
         dt = (Get-Date)
@@ -65,9 +90,7 @@ function Write-StatusToDB ($statusObject) {
 #Check eSchool Login
 Try {
 
-    $eSchoolLoginStatus = New-StatusObject
-    $eSchoolLoginStatus.service = 'eSP'
-    $eSchoolLoginStatus.method = 'login'
+    $eSchoolLoginStatus = New-StatusObject -service 'eSP' -method 'login'
 
     Connect-ToeSchool
 
@@ -86,9 +109,7 @@ Try {
 #Check eSchool Task Pull. This is something every user can do regardless of rights.
 Try {
 
-    $eSchoolTaskStatus = New-StatusObject
-    $eSchoolTaskStatus.service = 'eSP'
-    $eSchoolTaskStatus.method = 'tasks'
+    $eSchoolTaskStatus = New-StatusObject -service 'eSP' -method 'tasks'
 
     $tasks = Get-eSPTaskList -SilentErrors
 
@@ -107,9 +128,7 @@ Try {
 #Check Cognos Login.
 Try {
 
-    $CognosLoginStatus = New-StatusObject
-    $CognosLoginStatus.service = 'cognos'
-    $CognosLoginStatus.method = 'login'
+    $CognosLoginStatus = New-StatusObject -service 'cognos' -method 'login'
 
     Connect-ToCognos
 
@@ -127,9 +146,7 @@ Try {
 #Check Cognos Report Pull.
 Try {
 
-    $CognosReportStatus = New-StatusObject
-    $CognosReportStatus.service = 'cognos'
-    $CognosReportStatus.method = 'report'
+    $CognosReportStatus = New-StatusObject -service 'cognos' -method 'report'
 
     #smallest report for verification
     $schools = Get-CogSchool | Where-Object { $PSitem.School_number -like "$($districtLEA)*" }
@@ -151,9 +168,7 @@ Try {
 #Check State AD/SSO/EPAMSA (Entity Password and Account Management for State Applications) or whatever its called now.
 Try {
 
-    $SSOReportStatus = New-StatusObject
-    $SSOReportStatus.service = 'sso'
-    $SSOReportStatus.method = 'login'
+    $SSOReportStatus = New-StatusObject -service 'sso' -method 'login'
 
     $accountInfo = Get-Content "$($env:userprofile)\.config\Cognos\DefaultConfig.json" | ConvertFrom-Json
 
@@ -218,4 +233,60 @@ Try {
     Write-Error "Failed to login to SSO."
     Write-StatusToDB $SSOReportStatus
 
+}
+
+
+# Not everyone has access to eFinance or should be checking it.
+if ($efinance) {
+
+    Try {
+
+        $eFPReportStatus = New-StatusObject -service 'eFP' -method 'login'
+
+        #start session
+        $efpResponse = Invoke-WebRequest -Uri 'https://efinance20.efp.k12.ar.us/' -SessionVariable eFinanceSession -TimeoutSec 5
+
+        #submit username/password
+        $efpResponse2 = Invoke-WebRequest -Uri "https://efinance20.efp.k12.ar.us/eFP20.11/eFinancePLUS/SunGard.eFinancePLUS.Web/LogOn" `
+            -Method "POST" `
+            -WebSession $eFinanceSession `
+            -Form (@{
+                UserName = $username
+                tempUN = $null
+                tempPW= $null
+                Password = $password
+                login = $null
+            })
+
+        $efpResponse3 = Invoke-WebRequest -UseBasicParsing -Uri 'https://efinance20.efp.k12.ar.us/eFP20.11/eFinancePLUS/SunGard.eFinancePLUS.Web/Account/SetEnvironment/SessionStart' -WebSession $eFinanceSession
+
+        $eFPReportStatus.server = $efpResponse3.InputFields | Where-Object -Property name -EQ -Value 'ServerName' | Select-Object -ExpandProperty value -First 1
+
+        $efpresponse3.RawContent -match 'name="EnvironmentConfiguration.BusinessEntity"><option selected="selected" value="(.*)">.*</option>' | Out-Null
+        $eFPBusinessEntity = $matches[1]
+
+        #set environment and login
+        $efpResponse4 = Invoke-WebRequest -Uri "https://efinance20.efp.k12.ar.us/eFP20.11/eFinancePLUS/SunGard.eFinancePLUS.Web/Account/SetEnvironment/SessionStart" `
+            -Method "POST" `
+            -WebSession $eFinanceSession `
+            -Form (@{
+                ServerName = $eFPReportStatus.server
+                'EnvironmentConfiguration.BusinessEntity' = $eFPBusinessEntity
+                'EnvironmentConfiguration.EntityProfile' = $efpResponse3.InputFields | Where-Object -Property name -EQ -Value 'EnvironmentConfiguration.EntityProfile' | Select-Object -ExpandProperty value
+                'UserErrorMessage' = $null
+            })
+
+        #if this redirects then we aren't logged in completely.
+        $efpResponse5 = Invoke-RestMethod -Uri 'https://efinance20.efp.k12.ar.us/eFP20.11/eFinancePLUS/SunGard.eFinancePLUS.Web/Dashboard/SessionInfo' -WebSession $eFinanceSession -MaximumRedirection 0
+
+        Write-Host "Logged into eFianance $($efpResponse5.productVersion) for $($efpResponse5.profileName)" -ForegroundColor Green
+
+        Write-StatusToDB $eFPReportStatus
+
+    } catch {
+
+        Write-Error "Failed to login to eFinance."
+        Write-StatusToDB $eFPReportStatus
+
+    }
 }

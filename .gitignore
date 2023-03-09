@@ -1,3 +1,4 @@
 *.sqlite3
 *.csv
 *.txt
+settings.ps1
