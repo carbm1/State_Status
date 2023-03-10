@@ -281,6 +281,8 @@ if ($efinance) {
 
         Write-Host "Logged into eFianance $($efpResponse5.productVersion) for $($efpResponse5.profileName)" -ForegroundColor Green
 
+        $eFPReportStatus.status = 1
+        
         Write-StatusToDB $eFPReportStatus
 
     } catch {
