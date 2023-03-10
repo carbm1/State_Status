@@ -46,6 +46,10 @@ try {
             "dtUpload"      TEXT,
             PRIMARY KEY("rowIdentity" AUTOINCREMENT)
         );' | Out-Null
+
+        #remove records older than 30 days so the database doesn't grow exponentially 
+        Invoke-SqlUpdate -Query "DELETE FROM state_status WHERE dtStart < '$((Get-Date).AddDays(-30).ToString('yyyy-MM-dd'))'" | Out-Null
+
     }
 
 } catch {
@@ -282,7 +286,7 @@ if ($efinance) {
         Write-Host "Logged into eFianance $($efpResponse5.productVersion) for $($efpResponse5.profileName)" -ForegroundColor Green
 
         $eFPReportStatus.status = 1
-        
+
         Write-StatusToDB $eFPReportStatus
 
     } catch {
