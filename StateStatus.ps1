@@ -202,18 +202,16 @@ Try {
         -WebSession $ssoSession `
         -Form $usernameForm
 
-    $passwordForm = @{
-        'loginform:password' = $password
-        'loginform:loginButton' = 'Sign In'
-        'loginform_SUBMIT' = 1
-        'javax.faces.ViewState' = ($ssoResponse2.InputFields | Where-Object { $PSItem.name -eq 'javax.faces.ViewState' })[0].value
-    }
-
     #submit password
     $ssoResponse3 = Invoke-WebRequest -Uri "https://k12.ade.arkansas.gov/identity/self-service/ade/login.jsf" `
         -Method "POST" `
         -WebSession $ssoSession `
-        -Form $passwordForm
+        -Form (@{
+            'loginform:password' = $password
+            'loginform:loginButton' = 'Sign In'
+            'loginform_SUBMIT' = 1
+            'javax.faces.ViewState' = ($ssoResponse2.InputFields | Where-Object { $PSItem.name -eq 'javax.faces.ViewState' })[0].value
+        })
 
     #submit login
     $ssoResponse4 = Invoke-WebRequest -Uri "https://k12.ade.arkansas.gov/identity/self-service/ade/loggedin.jsf" `
@@ -296,3 +294,19 @@ if ($efinance) {
 
     }
 }
+
+#Remove eSchoolSession.
+Remove-Variable -Name eSchoolSession -Scope Global -Force -ErrorAction SilentlyContinue
+
+#Cleanup CognosSession
+Remove-Variable -Name CognosSession -Scope Global -Force -ErrorAction SilentlyContinue
+
+#Cleanup SSO
+Remove-Variable -Name ssoSession -ErrorAction SilentlyContinue
+
+#Cleanup eFinance
+Remove-Variable -Name eFinanceSession -ErrorAction SilentlyContinue
+
+#Do not leave username/password in memory.
+Remove-Variable -Name username -ErrorAction SilentlyContinue
+Remove-Variable -Name password -ErrorAction SilentlyContinue
