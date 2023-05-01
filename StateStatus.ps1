@@ -169,10 +169,10 @@ Try {
 
 }
 
-#Check State AD/SSO/EPAMSA (Entity Password and Account Management for State Applications) or whatever its called now.
+#Check State ADAM (SSO) Site.
 Try {
 
-    $SSOReportStatus = New-StatusObject -service 'sso' -method 'login'
+    $ADAMReportStatus = New-StatusObject -service 'ADAM' -method 'login'
 
     $accountInfo = Get-Content "$($env:userprofile)\.config\Cognos\DefaultConfig.json" | ConvertFrom-Json
 
@@ -180,60 +180,34 @@ Try {
     $password = (New-Object PSCredential "user",$($accountInfo | Select-Object -ExpandProperty password | ConvertTo-SecureString)).GetNetworkCredential().Password
     
     #this will be a 301 to the login page.
-    $ssoResponse = Invoke-WebRequest -Uri https://k12.ade.arkansas.gov -TimeoutSec 5 -SessionVariable ssoSession
+    $ADAMResponse = Invoke-WebRequest -Uri "https://adam.ade.arkansas.gov/" -TimeoutSec 5 -SessionVariable ADAMSession
 
-    $jsessionId = ($ssoResponse.Headers.'Set-Cookie' | Select-String -Pattern 'JSESSIONID=(\w{32})').Matches.Groups[1].Value
-    $browserId = (New-Guid) -replace '-',''
+    # $jsessionId = ($ADAMResponse.Headers.'Set-Cookie' | Select-String -Pattern 'JSESSIONID=(\w{32})').Matches.Groups[1].Value
+    # $browserId = (New-Guid) -replace '-',''
 
     $usernameForm = @{
-        'loginform:userid' = $username
-        'loginform:browserId' = $browserId
-        'loginform:showCaptcha' = 'false'
-        'loginform:captchaType' = 'JCAPTCHA'
-        'loginform:reCaptchaSiteKey' = ''
-        'loginform:loginButton' = 'Next'
-        'loginform_SUBMIT' = '1'
-        'javax.faces.ViewState' = ($ssoResponse.InputFields | Where-Object { $PSItem.name -eq 'javax.faces.ViewState' })[0].value
+        'LoginInfo.UserName' = $username
+        'LoginInfo.Password' = $password
+        '__RequestVerificationToken' = ($ADAMResponse.InputFields | Where-Object { $PSItem.name -eq '__RequestVerificationToken' })[0].Value
     }
 
-    #submit username
-    $ssoResponse2 = Invoke-WebRequest -Uri "https://k12.ade.arkansas.gov/identity/self-service/ade/login.jsf;jsessionid=$($jsessionId)" `
-        -Method "POST" `
-        -WebSession $ssoSession `
-        -Form $usernameForm
-
-    #submit password
-    $ssoResponse3 = Invoke-WebRequest -Uri "https://k12.ade.arkansas.gov/identity/self-service/ade/login.jsf" `
-        -Method "POST" `
-        -WebSession $ssoSession `
-        -Form (@{
-            'loginform:password' = $password
-            'loginform:loginButton' = 'Sign In'
-            'loginform_SUBMIT' = 1
-            'javax.faces.ViewState' = ($ssoResponse2.InputFields | Where-Object { $PSItem.name -eq 'javax.faces.ViewState' })[0].value
-        })
-
     #submit login
-    $ssoResponse4 = Invoke-WebRequest -Uri "https://k12.ade.arkansas.gov/identity/self-service/ade/loggedin.jsf" `
+    $ADAMResponse2 = Invoke-WebRequest -Uri "https://adam.ade.arkansas.gov/login?ReturnUrl=/" `
         -Method "POST" `
-        -WebSession $ssoSession `
-        -Form (@{
-            'loginform:advanceButton' = 'Submit'
-            'loginform_SUBMIT' = 1
-            'javax.faces.ViewState' = ($ssoResponse3.InputFields | Where-Object { $PSItem.name -eq 'javax.faces.ViewState' })[0].value
-        })
+        -WebSession $ADAMSession `
+        -Form $usernameForm `
 
     #if the page doesn't redirect you're logged in.
-    $ssoResponse5 =  Invoke-WebRequest -Uri "https://k12.ade.arkansas.gov/identity/self-service/ade/ussp.jsf" -WebSession $ssoSession -MaximumRedirection 0
+    $ADAMResponse3 =  Invoke-WebRequest -Uri "https://adam.ade.arkansas.gov/Password" -WebSession $ADAMSession -MaximumRedirection 0
 
-    $SSOReportStatus.status = 1
+    $ADAMReportStatus.status = 1
 
-    Write-StatusToDB $SSOReportStatus
+    Write-StatusToDB $ADAMReportStatus
 
 } catch {
 
-    Write-Error "Failed to login to SSO."
-    Write-StatusToDB $SSOReportStatus
+    Write-Error "Failed to login to ADAM."
+    Write-StatusToDB $ADAMReportStatus
 
 }
 
@@ -301,8 +275,8 @@ Remove-Variable -Name eSchoolSession -Scope Global -Force -ErrorAction SilentlyC
 #Cleanup CognosSession
 Remove-Variable -Name CognosSession -Scope Global -Force -ErrorAction SilentlyContinue
 
-#Cleanup SSO
-Remove-Variable -Name ssoSession -ErrorAction SilentlyContinue
+#Cleanup ADAM
+Remove-Variable -Name ADAMSession -ErrorAction SilentlyContinue
 
 #Cleanup eFinance
 Remove-Variable -Name eFinanceSession -ErrorAction SilentlyContinue
