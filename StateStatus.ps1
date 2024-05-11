@@ -143,9 +143,10 @@ if ($espDownloadDefinitions) {
                 . $PSScriptRoot\resources\espDownloadDefinitions.ps1
             }
 
-            Remove-eSPFile -FileName "camtech-state-monitoring.csv" #This does not return if its successful or if the file doesn't exist.
+            Remove-eSPFile -FileName "camtech-state-monitoring.csv" | Out-Null #This does not return if its successful or if the file doesn't exist.
             Invoke-eSPDownloadDefinition -InterfaceId CAMST #This does not return if the task has started or is running.
-
+            Start-Sleep -Seconds 1 #This is to give the task a chance to show up in the list.
+            
             #check that the task now is listed in the task list.
             if (-Not(Get-eSPTaskList | Select-Object -ExpandProperty InactiveTasks | Where-Object -Property TaskName -eq 'CAMST')) {
                 Write-Error "Failed to find eSchool Task CAMST in the task list." -ErrorAction Stop
