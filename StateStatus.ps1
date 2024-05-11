@@ -3,15 +3,15 @@
 
 <#
 
-    .SYNOPSIS
-    This script will monitor state servers for authentication and data.
+.SYNOPSIS
+This script will monitor state servers for authentication and data retrieval.
 
-    .DESCRIPTION
-    This script will only ever use the DefaultConfig of the CognosModule to test services.
+.DESCRIPTION
+This script will only ever use the DefaultConfig of the CognosModule to test services.
 
 #>
 
-$version = '23.3.9'
+$version = '24.5.11'
 
 try {
     Open-SQLiteConnection -DataSource "$PSScriptRoot\statestatus.sqlite3" -ErrorAction Stop
@@ -127,6 +127,68 @@ Try {
     Write-Error "Failed to retrieve eSchool Tasks"
     Write-StatusToDB $eSchoolTaskStatus
 
+}
+
+#Check for eSchool task success and data pull. Not all users can do this so its optional.
+if ($espDownloadDefinitions) {
+    
+        Try {
+    
+            $eSchoolDownloadDefinitionStatus = New-StatusObject -service 'eSP' -method 'definitions'
+    
+            $eSPDefinitions = (Invoke-eSPExecuteSearch -SearchType UPLOADDEF).interface_id
+
+            if ($eSPDefinitions -notcontains 'CAMST') {
+                Write-Host "Creating download definition CAMST for CAMTech State Monitoring" -ForegroundColor Yellow
+                . $PSScriptRoot\resources\espDownloadDefinitions.ps1
+            }
+
+            Remove-eSPFile -FileName "camtech-state-monitoring.csv" #This does not return if its successful or if the file doesn't exist.
+            Invoke-eSPDownloadDefinition -InterfaceId CAMST #This does not return if the task has started or is running.
+
+            #check that the task now is listed in the task list.
+            if (-Not(Get-eSPTaskList | Select-Object -ExpandProperty InactiveTasks | Where-Object -Property TaskName -eq 'CAMST')) {
+                Write-Error "Failed to find eSchool Task CAMST in the task list." -ErrorAction Stop
+            }
+
+            #wait to see if it starts in a few seconds.
+            $counter = 0
+            do {
+                $eSPActiveTask = Get-eSPTaskList | Select-Object -ExpandProperty ActiveTasks | Where-Object -Property TaskName -eq 'CAMST'
+                Start-Sleep -Seconds 1
+                $counter++
+                if ($counter -ge 10) {
+                    Write-Error "CAMST did not start within 10 seconds." -ErrorAction Stop
+                }
+            } until ($eSPActiveTask)
+                
+            #we are intentionally not saving this to disk and only checking for files in the last 2 minutes.
+            $espDownloadDefinitionValues = Get-eSPFileList |
+                Where-Object -Property ModifiedDate -gt (Get-Date).AddMinutes(-2) |
+                Where-Object -Property RawFileName -eq "camtech-state-monitoring.csv" |
+                Get-eSPFile -Raw |
+                ConvertFrom-Csv
+        
+            #if both students_active and students_inactive are greater than 1 then we are good.
+            if (
+                (($espDownloadDefinitionValues | Where-Object -Property Name -eq 'students_active' | Select-Object -ExpandProperty Value) -ge 1) -and
+                (($espDownloadDefinitionValues | Where-Object -Property Name -eq 'students_inactive' | Select-Object -ExpandProperty Value) -ge 1)
+            ) {
+                $eSchoolDownloadDefinitionStatus.status = 1 #boolean true
+                $eSchoolDownloadDefinitionStatus.server = $eSchoolSession.server
+            } else {
+                Write-Error "CAMST did not produce the expected results." -ErrorAction Stop
+            }
+
+            Write-StatusToDB $eSchoolDownloadDefinitionStatus
+    
+        } catch {
+    
+            Write-Error "Failed to retrieve eSchool Definitions"
+            Write-StatusToDB $eSchoolDownloadDefinitionStatus
+    
+        }
+    
 }
 
 #Check Cognos Login.
@@ -271,6 +333,12 @@ if ($efinance) {
 
 #Remove eSchoolSession.
 Remove-Variable -Name eSchoolSession -Scope Global -Force -ErrorAction SilentlyContinue
+
+#Remove DownloadDefinitions
+Remove-Variable -Name espDownloadDefinitions -Scope Global -Force -ErrorAction SilentlyContinue
+Remove-Variable -Name espDownloadDefinitionValues -Scope Global -Force -ErrorAction SilentlyContinue
+Remove-Variable -Name eSPActiveTask -Scope Global -Force -ErrorAction SilentlyContinue
+Remove-Variable -Name eSPDefinitions -Scope Global -Force -ErrorAction SilentlyContinue
 
 #Cleanup CognosSession
 Remove-Variable -Name CognosSession -Scope Global -Force -ErrorAction SilentlyContinue

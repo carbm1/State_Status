@@ -3,8 +3,8 @@
 
 <#
 
-    .SYNOPSIS
-    This script will upload the results into CAMTech Computer Services, LLC public dashboard.
+.SYNOPSIS
+This script will upload the results into CAMTech Computer Services, LLC public dashboard.
 
 #>
 

@@ -1,7 +1,7 @@
 <#
 
-    .SYNOPSIS
-    This script will start a loop every X minutes to check the state servers and then upload their status.
+.SYNOPSIS
+This script will start a loop every X minutes to check the state servers and then upload their status.
 
 #>
 
