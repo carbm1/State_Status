@@ -143,33 +143,35 @@ if ($espDownloadDefinitions) {
                 . $PSScriptRoot\resources\espDownloadDefinitions.ps1
             }
 
-            Remove-eSPFile -FileName "camtech-state-monitoring.csv" | Out-Null #This does not return if its successful or if the file doesn't exist.
+            # Remove-eSPFile -FileName "camtech-state-monitoring.csv" #This breaks stuff.
             Invoke-eSPDownloadDefinition -InterfaceId CAMST #This does not return if the task has started or is running.
-            Start-Sleep -Seconds 1 #This is to give the task a chance to show up in the list.
-            
+                        
             #check that the task now is listed in the task list.
             if (-Not(Get-eSPTaskList | Select-Object -ExpandProperty InactiveTasks | Where-Object -Property TaskName -eq 'CAMST')) {
                 Write-Error "Failed to find eSchool Task CAMST in the task list." -ErrorAction Stop
             }
 
-            #wait to see if it starts in a few seconds.
+            #We don't need to check the status of the task. We are just going to wait up to 15 seconds for the file to be created.
             $counter = 0
             do {
-                $eSPActiveTask = Get-eSPTaskList | Select-Object -ExpandProperty ActiveTasks | Where-Object -Property TaskName -eq 'CAMST'
-                Start-Sleep -Seconds 1
-                $counter++
-                if ($counter -ge 10) {
-                    Write-Error "CAMST did not start within 10 seconds." -ErrorAction Stop
+
+                #we are intentionally not saving this to disk and only checking for files in the last 2 minutes.
+                $espDownloadDefinitionValues = Get-eSPFileList |
+                    Where-Object -Property ModifiedDate -gt (Get-Date).AddMinutes(-2) |
+                    Where-Object -Property RawFileName -eq "camtech-state-monitoring.csv" |
+                    Get-eSPFile -Raw |
+                    ConvertFrom-Csv
+
+                if (-Not($espDownloadDefinitionValues)) {
+                    Start-Sleep -Seconds 1
                 }
-            } until ($eSPActiveTask)
+
+                $counter++
+                if ($counter -ge 15) {
+                    Write-Error "CAMST did not produce the file within within 15 seconds." -ErrorAction Stop
+                }
+            } until ($espDownloadDefinitionValues)
                 
-            #we are intentionally not saving this to disk and only checking for files in the last 2 minutes.
-            $espDownloadDefinitionValues = Get-eSPFileList |
-                Where-Object -Property ModifiedDate -gt (Get-Date).AddMinutes(-2) |
-                Where-Object -Property RawFileName -eq "camtech-state-monitoring.csv" |
-                Get-eSPFile -Raw |
-                ConvertFrom-Csv
-        
             #if both students_active and students_inactive are greater than 1 then we are good.
             if (
                 (($espDownloadDefinitionValues | Where-Object -Property Name -eq 'students_active' | Select-Object -ExpandProperty Value) -ge 1) -and
