@@ -285,10 +285,10 @@ if ($efinance) {
         $eFPReportStatus = New-StatusObject -service 'eFP' -method 'login'
 
         #start session
-        $efpResponse = Invoke-WebRequest -Uri 'https://efinance20.efp.k12.ar.us/' -SessionVariable eFinanceSession -TimeoutSec 5
+        $efpResponse = Invoke-WebRequest -Uri 'https://efinance23.efp.k12.ar.us/' -SessionVariable eFinanceSession -TimeoutSec 5
 
         #submit username/password
-        $efpResponse2 = Invoke-WebRequest -Uri "https://efinance20.efp.k12.ar.us/eFP20.11/eFinancePLUS/SunGard.eFinancePLUS.Web/LogOn" `
+        $efpResponse2 = Invoke-WebRequest -Uri "https://efinance23.efp.k12.ar.us/erp/pserp/pserp.web/LogOn/" `
             -Method "POST" `
             -WebSession $eFinanceSession `
             -Form (@{
@@ -299,7 +299,7 @@ if ($efinance) {
                 login = $null
             })
 
-        $efpResponse3 = Invoke-WebRequest -UseBasicParsing -Uri 'https://efinance20.efp.k12.ar.us/eFP20.11/eFinancePLUS/SunGard.eFinancePLUS.Web/Account/SetEnvironment/SessionStart' -WebSession $eFinanceSession
+        $efpResponse3 = Invoke-WebRequest -UseBasicParsing -Uri 'https://efinance23.efp.k12.ar.us/erp/pserp/pserp.web/Account/SetEnvironment/SessionStart' -WebSession $eFinanceSession
 
         $eFPReportStatus.server = $efpResponse3.InputFields | Where-Object -Property name -EQ -Value 'ServerName' | Select-Object -ExpandProperty value -First 1
 
@@ -307,7 +307,7 @@ if ($efinance) {
         $eFPBusinessEntity = $matches[1]
 
         #set environment and login
-        $efpResponse4 = Invoke-WebRequest -Uri "https://efinance20.efp.k12.ar.us/eFP20.11/eFinancePLUS/SunGard.eFinancePLUS.Web/Account/SetEnvironment/SessionStart" `
+        $efpResponse4 = Invoke-WebRequest -Uri "https://efinance23.efp.k12.ar.us/erp/pserp/pserp.web/Account/SetEnvironment/SessionStart" `
             -Method "POST" `
             -WebSession $eFinanceSession `
             -Form (@{
@@ -318,7 +318,7 @@ if ($efinance) {
             })
 
         #if this redirects then we aren't logged in completely.
-        $efpResponse5 = Invoke-RestMethod -Uri 'https://efinance20.efp.k12.ar.us/eFP20.11/eFinancePLUS/SunGard.eFinancePLUS.Web/Dashboard/SessionInfo' -WebSession $eFinanceSession -MaximumRedirection 0
+        $efpResponse5 = Invoke-RestMethod -Uri 'https://efinance23.efp.k12.ar.us/erp/pserp/pserp.web/Dashboard/SessionInfo' -WebSession $eFinanceSession -MaximumRedirection 0
 
         Write-Host "Logged into eFianance $($efpResponse5.productVersion) for $($efpResponse5.profileName)" -ForegroundColor Green
 
